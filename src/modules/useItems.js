@@ -1,53 +1,61 @@
 import { ref, onMounted } from 'vue';
-import { db, ItemsCollection, ItemsFirebaseCollectionRef } from './firebase';
-import {onSnapshot, addDoc, doc, deleteDoc } from 'firebase/firestore';
+import { db } from './firebase'; // Ensure 'db' is imported correctly
+import { onSnapshot, addDoc, doc, deleteDoc, updateDoc, collection } from 'firebase/firestore'; // Ensure 'updateDoc' is imported
 
 export const useItems = () => {
-    // step 1: create a new movie title and store it in the newMovieTitle variable
-    const newItemTitle = ref('');
+  const items = ref([]);
+  const newItemTitle = ref('');
+  const editingItem = ref(null); // To track the item being edited
 
-    // step 2: create a list of movies and store it in a ref
-    const Items = ref([]);
+  // Fetch the items from Firestore on mount
+  onMounted(() => {
+    const itemsCollection = collection(db, 'portfolio'); // Reference to your Firestore collection
+    onSnapshot(itemsCollection, (snapshot) => {
+      items.value = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+    });
+  });
 
-
-    // step 3: create a function to retrive a new movie to the list of movies
-    onMounted(() => {
-    onSnapshot(ItemsCollection, (snapshot) => {
-      Items.value = snapshot.docs.map(doc => ({
-        id: doc.id, 
-        ...doc.data() // spread operator  
-  /* title: doc.data().title /* Dette skal gøres for hvert field der er lavet for doc. */
-      }))
-    })
-    })
-  /* Map is like a v-loop */
-  
-  // step 4: create a function to add a new movie to the list of movies
-  // () skal være blankt, da vi ikke skal have nogen parametre med
-  // hvis den skulle slette vil den skulle igennem en parameter som er id
-  // trim vil fjerne overflødige mellemrum
+  // Add a new item
   const addItem = async () => {
-    if(newItemTitle.value.trim() ==='') return; //check if input is empty, return (stop function)
-    
-    await addDoc (ItemsCollection, {
+    if (newItemTitle.value.trim() === '') return;
+    await addDoc(collection(db, 'portfolio'), {
       title: newItemTitle.value
-    })
-    newItemTitle.value = ''; // clear input field 
-  }
-  
-  // step 5: create a function to delete a movie from the list of movies
+    });
+    newItemTitle.value = '';
+  };
+
+  // Delete an item
   const deleteItem = async (id) => {
-    await deleteDoc(doc(db, ItemsFirebaseCollectionRef, id))
-  }
+    await deleteDoc(doc(db, 'portfolio', id));
+  };
 
-    return {
-        Items,
-        newItemTitle,
-        addItem,
-        deleteItem
+  // Start editing an item
+  const startEditItem = (item) => {
+    editingItem.value = { ...item }; // Make a copy of the item to edit
+  };
+
+  // Save the edited item
+  const saveItem = async () => {
+    if (editingItem.value) {
+      const itemDoc = doc(db, 'portfolio', editingItem.value.id);
+      await updateDoc(itemDoc, {
+        title: editingItem.value.title, // Update the title
+        description: editingItem.value.description // Add description if needed
+      });
+      editingItem.value = null; // Clear the editing item after saving
     }
+  };
 
-
-
-
-}
+  return {
+    items,
+    newItemTitle,
+    editingItem, // Expose editingItem for editing state
+    addItem,
+    deleteItem,
+    startEditItem,
+    saveItem // Expose saveItem to save edited item
+  };
+};
