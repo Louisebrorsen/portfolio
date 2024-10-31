@@ -15,8 +15,14 @@
       />
 
       <!-- Upload File Input -->
-      <input type="file" @change="handleFileUpload" />
+      <!-- Upload Multiple Files Input -->
+      <input type="file" @change="handleFileUpload" multiple />
       <input type="text" v-model="newItemLink" placeholder="Add a Link" />
+      <input
+        type="text"
+        v-model="newItemCategory"
+        placeholder="Add a Category"
+      />
       <button class="btn2" @click="addNewItem">Add Item</button>
     </div>
   </div>
@@ -26,16 +32,22 @@
       <div v-for="item in items" :key="item.id" class="project-card">
         <div class="card">
           <div class="card-image">
-            <img :src="item.image" alt="Portfolio Image" v-if="item.image" />
+            <img
+              :src="item.images[0]"
+              alt="Portfolio Image"
+              v-if="item.images && item.images.length"
+            />
             <span v-else>Image not available</span>
           </div>
+
           <div class="card-content content-evenly">
             <h3 class="font-bold">{{ item.title }}</h3>
             <p>{{ item.description }}</p>
+            <a :href="item.link" target="_blank" v-if="item.link">Visit Link</a>
           </div>
         </div>
 
-        <div class="btn-grid button-wrapper">
+        <div class="btn-grid button-wrapper py-4">
           <button class="btn2" @click="startEditItem(item)">Edit</button>
           <button class="btn2" @click="deleteItem(item.id)">Delete</button>
         </div>
@@ -52,6 +64,16 @@
               type="text"
               v-model="editingItem.description"
               placeholder="Edit Description"
+            />
+            <input
+              type="text"
+              v-model="editingItem.link"
+              placeholder="Edit Link"
+            />
+            <input
+              type="text"
+              v-model="editingItem.category"
+              placeholder="Edit category"
             />
             <!-- Knapperne bliver kun vist, når et item redigeres -->
             <div
@@ -75,67 +97,68 @@ import {
   ref as storageRef,
   uploadBytes,
 } from "firebase/storage";
-import { db, storage } from "@/modules/firebase"; // Import Firestore and Storage
-import { useItems } from "@/modules/useItems"; // Import the custom useItems hook
-import { collection, addDoc } from "firebase/firestore"; // Firestore functions
+import { db, storage } from "@/modules/firebase";
+import { useItems } from "@/modules/useItems";
+import { collection, addDoc } from "firebase/firestore";
 
 export default {
   setup() {
-    // Use custom useItems hook to manage portfolio items
     const { items, deleteItem, editingItem, startEditItem, saveItem } =
       useItems();
 
-    // New item inputs
     const newItemTitle = ref("");
     const newItemDescription = ref("");
     const newItemLink = ref("");
-    const newItemImage = ref(null);
+    const newItemImages = ref([]); // Gemmer flere billedfiler
+    const newItemCategory = ref("");
 
-    // Handle file upload and store it in Firebase Storage
+    // Håndterer upload af flere filer
     const handleFileUpload = (event) => {
-      newItemImage.value = event.target.files[0];
+      newItemImages.value = Array.from(event.target.files); // Gemmer alle valgte filer
     };
 
-    // Add a new item to Firestore and upload image to Firebase Storage
+    // Tilføjer nyt item med flere billeder
     const addNewItem = async () => {
-      if (!newItemImage.value) {
-        alert("Please select an image file to upload.");
+      if (!newItemImages.value.length) {
+        alert("Please select one or more image files to upload.");
         return;
       }
 
       try {
-        // Upload image to Firebase Storage
-        const fileRef = storageRef(
-          storage,
-          `portfolio/${newItemImage.value.name}`
+        // Upload hver fil og gem URL'erne i Firestore som et array
+        const imageUrls = await Promise.all(
+          newItemImages.value.map(async (file) => {
+            const fileRef = storageRef(storage, `portfolio/${file.name}`);
+            const snapshot = await uploadBytes(fileRef, file);
+            return await getDownloadURL(snapshot.ref);
+          })
         );
-        const snapshot = await uploadBytes(fileRef, newItemImage.value);
-        const imageUrl = await getDownloadURL(snapshot.ref);
 
-        // Add new item to Firestore
+        // Gemmer itemet i Firestore
         await addDoc(collection(db, "portfolio"), {
           title: newItemTitle.value,
           description: newItemDescription.value,
-          image: imageUrl,
+          images: imageUrls, // Gemmer billed-URL'erne som et array
           link: newItemLink.value || "",
+          category: newItemCategory.value || "",
         });
 
-        // Clear input fields
+        // Nulstil inputfelterne
         newItemTitle.value = "";
         newItemDescription.value = "";
         newItemLink.value = "";
-        newItemImage.value = null;
+        newItemImages.value = [];
+        newItemCategory.value = "";
       } catch (error) {
         console.error(
-          "Error uploading file or adding item to Firestore:",
+          "Error uploading files or adding item to Firestore:",
           error
         );
       }
     };
 
-    // Cancel editing mode
     const cancelEdit = () => {
-      editingItem.value = null; // Clear the editing item
+      editingItem.value = null;
     };
 
     return {
@@ -143,13 +166,14 @@ export default {
       newItemTitle,
       newItemDescription,
       newItemLink,
-      newItemImage,
+      newItemImages, // Returnerer newItemImages her
+      newItemCategory,
       handleFileUpload,
       addNewItem,
       deleteItem,
       editingItem,
-      startEditItem, // Use startEditItem from useItems
-      saveItem, // Use saveItem from useItems
+      startEditItem,
+      saveItem,
       cancelEdit,
     };
   },
@@ -158,9 +182,9 @@ export default {
 
 <style scoped>
 .button-wrapper {
-  display: flex;               /* Use flexbox for centering */
-  justify-content: center;     /* Center the button */
-  width: 100%;                /* Ensure it takes full width of card */
+  display: flex;
+  justify-content: center;
+  width: 100%;
 }
 
 .main {
@@ -172,16 +196,13 @@ export default {
 
 .project-card-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr); /* 4 cards per row */
+  grid-template-columns: repeat(4, 1fr);
   gap: 20px;
 }
 
 @media (max-width: 768px) {
   .project-card-grid {
-    grid-template-columns: repeat(
-      2,
-      1fr
-    ); /* 2 cards per row on smaller screens */
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -214,7 +235,6 @@ export default {
   max-width: 240px;
   max-height: 200px;
   min-height: 100px;
-  -o-object-fit: cover;
   object-fit: scale-down;
 }
 

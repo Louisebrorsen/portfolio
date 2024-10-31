@@ -1,61 +1,60 @@
-import { ref, onMounted } from 'vue';
-import { db } from './firebase'; // Ensure 'db' is imported correctly
-import { onSnapshot, addDoc, doc, deleteDoc, updateDoc, collection } from 'firebase/firestore'; // Ensure 'updateDoc' is imported
+import { ref } from "vue";
+import { db } from "@/modules/firebase";
+import { collection, getDocs, doc, updateDoc, deleteDoc } from "firebase/firestore";
 
-export const useItems = () => {
+export function useItems() {
   const items = ref([]);
-  const newItemTitle = ref('');
-  const editingItem = ref(null); // To track the item being edited
+  const editingItem = ref(null);
 
-  // Fetch the items from Firestore on mount
-  onMounted(() => {
-    const itemsCollection = collection(db, 'portfolio'); // Reference to your Firestore collection
-    onSnapshot(itemsCollection, (snapshot) => {
-      items.value = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-    });
-  });
-
-  // Add a new item
-  const addItem = async () => {
-    if (newItemTitle.value.trim() === '') return;
-    await addDoc(collection(db, 'portfolio'), {
-      title: newItemTitle.value
-    });
-    newItemTitle.value = '';
+  const loadItems = async () => {
+    const querySnapshot = await getDocs(collection(db, "portfolio"));
+    items.value = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
   };
 
-  // Delete an item
-  const deleteItem = async (id) => {
-    await deleteDoc(doc(db, 'portfolio', id));
-  };
 
-  // Start editing an item
   const startEditItem = (item) => {
-    editingItem.value = { ...item }; // Make a copy of the item to edit
+    editingItem.value = { ...item }; // Clone the item for editing
   };
 
-  // Save the edited item
   const saveItem = async () => {
     if (editingItem.value) {
-      const itemDoc = doc(db, 'portfolio', editingItem.value.id);
-      await updateDoc(itemDoc, {
-        title: editingItem.value.title, // Update the title
-        description: editingItem.value.description // Add description if needed
+      const itemRef = doc(db, "portfolio", editingItem.value.id);
+
+      // Update the Firestore document with title, description, and link
+      await updateDoc(itemRef, {
+        title: editingItem.value.title,
+        description: editingItem.value.description,
+        link: editingItem.value.link, // Include the link field here
+        category: editingItem.value.category,
       });
-      editingItem.value = null; // Clear the editing item after saving
+
+      // Update the local item list
+      const index = items.value.findIndex((item) => item.id === editingItem.value.id);
+      if (index !== -1) {
+        items.value[index] = { ...editingItem.value };
+      }
+
+      // Clear editing mode
+      editingItem.value = null;
     }
   };
 
+  const deleteItem = async (id) => {
+    await deleteDoc(doc(db, "portfolio", id));
+    items.value = items.value.filter((item) => item.id !== id);
+  };
+
+  // Load items on setup
+  loadItems();
+
   return {
     items,
-    newItemTitle,
-    editingItem, // Expose editingItem for editing state
-    addItem,
-    deleteItem,
+    editingItem,
     startEditItem,
-    saveItem // Expose saveItem to save edited item
+    saveItem,
+    deleteItem,
   };
-};
+}
