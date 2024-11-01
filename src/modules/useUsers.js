@@ -1,5 +1,5 @@
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";  
-import { auth } from '../modules/firebase'; // importere auth fra firebase.js
+import { auth } from './firebase'; // importere auth fra firebase.js
 import { ref, computed } from 'vue'; // importere ref og computed fra vue
 import router from "@/router";
 
